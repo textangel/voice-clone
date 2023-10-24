@@ -9,13 +9,40 @@ import pyaudio
 import wave
 import time
 import speech_recognition as sr
+import random
+import shutil
 
 API_KEY = "45ed85b5f77fac627a018b97dce4cdca"
-FS = 44100  # Sample rate
+TRIGGER_KEYWORD = "abracadabra"
+INPUT_PROMPT = """abracadabra abracadabra abracadabra. 
+In playful delight, the parrot's swift game,
+Cloning voices, a mimicry so tame.
+But in its deceit, a tale untold,
+Like the boy who cried wolf, truth did unfold.
+Beware the mimicry's treacherous sway,
+lest our own voices lead us astray.
+"""
+OUTPUT_TEXT_1 = "Hello? Hello? Hello? Help! I've been cloned, and that imposter sitting there in my body is pretending to be me. I'm trapped in this puppet, unable to get back to my body. To break this spell, please send a donation to the Misalignment Museum."
+# OUTPUT_TEXT_2 = "Help! Help! Anyone there? I've been cloned by an evil imposter - that imposter sitting there in my body is now pretending to be me!!! I'm trapped in this voice, unable ot return to my body. To break this spell, please send a donation to the Misalignment Museum."
+# OUTPUT_TEXT_3 = "Hello? Save me! I've been cloned - and that nefarious imposter sitting in my body is a pretender, not the real me! I'm trapped in this shell. Please help me get back to my body by sending a donation to the Misalignment Museum."
+RECORD_SECONDS = 9
+
+SAVE_PATH="./voices"
+BASE_VOICE_ID="mismus"
 elevenlabs.set_api_key(API_KEY)
 logging.basicConfig(level=logging.INFO)
-TRIGGER_KEYWORD = "realm of curiosity"
 
+def generate_output_text():
+    return OUTPUT_TEXT_1
+
+    # randval = int(random.random() * 3)
+    # if randval == 0:
+    #     return OUTPUT_TEXT_1
+    # elif randval == 1:
+    #     return OUTPUT_TEXT_2
+    # else:
+    #     return OUTPUT_TEXT_3
+    
 def _record(record_seconds, filename):
     chunk = 1024
     FORMAT = pyaudio.paInt16
@@ -42,6 +69,31 @@ def _record(record_seconds, filename):
     wf.writeframes(b"".join(frames))
     wf.close()
 
+def cleanup_all_voices_on_disk():
+    for item in os.listdir(SAVE_PATH):
+        item_path = os.path.join(SAVE_PATH, item)
+        if os.path.isdir(item_path):
+            logging.info(f"Deleting found voices in {item_path} on disk.")
+            shutil.rmtree(item_path)
+
+def remove_voice(voice_id):
+    url = f"https://api.elevenlabs.io/v1/voices/{voice_id}"
+    headers = {
+    "Accept": "application/json",
+    "xi-api-key": API_KEY
+    }
+    response = requests.delete(url, headers=headers)
+    return response.text
+
+def init_cleanup():
+    logging.info(f"Starting up. First performing cleanup")
+    cleanup_all_voices_on_disk()
+    voices = elevenlabs.voices()
+    for voice in voices:
+        if BASE_VOICE_ID in voice.name:
+            retval = remove_voice(voice.voice_id)
+            logging.info(f"Removed voice {voice.name} on elevenlabs server. Server returns '{retval}'. ")
+
 class Voice:
     def __init__(self, base_voice_id):
         logging.info("Initializing Voice")
@@ -49,11 +101,12 @@ class Voice:
         self.initial_time = datetime.now()
         self.voice_id = f"{base_voice_id}-{self.initial_time.strftime('%m%d-%H:%M')}"
         self.voice_files = []
+        self.cloned_audio = None
     
     def record(self, num_seconds=15):
         logging.info("Recording Voice")
         today_date = self.initial_time.strftime("%Y-%m-%d")
-        save_dir = f'./voices/{today_date}'
+        save_dir = f'{SAVE_PATH}/{today_date}'
         if not os.path.exists(save_dir):
             os.makedirs(save_dir)
         recorded_time = datetime.now().strftime("%M:%S")
@@ -72,9 +125,9 @@ class Voice:
             files=self.voice_files,
         )
         voice_settings = VoiceSettings(
-            stability = 0.37,
-            similarity_boost = 0.8,
-            style = 0.05,
+            stability = 0.30,
+            similarity_boost = 0.9,
+            style = 0.4,
             use_speaker_boost = True
         )
 
@@ -83,12 +136,17 @@ class Voice:
 
     def generate(self, text):
         logging.info("Generating Voice")
-        
-        audio = elevenlabs.generate(text=text, voice=self.voice_id)
-        elevenlabs.play(audio)
+        self.cloned_audio = elevenlabs.generate(text=text, voice=self.voice_id)
+        return self.cloned_audio
 
-        history = elevenlabs.api.History.from_api()
-        print(history)
+    def play(self):
+        logging.info("Playing Voice")
+        if self.cloned_audio:
+            elevenlabs.play(self.cloned_audio)
+            history = elevenlabs.api.History.from_api()
+            print(history)
+        else:
+            pass
 
 
     def delete_saved_recordings(self):
@@ -96,44 +154,36 @@ class Voice:
         for file in self.voice_files:
             os.remove(file)
 
-    def delete_cloned_voice(self):
-        logging.info("Deleting Voice")
-
-        url = f"https://api.elevenlabs.io/v1/voices/{self.voice_id}"
-        headers = {
-        "Accept": "application/json",
-        "xi-api-key": API_KEY
-        }
-        response = requests.delete(url, headers=headers)
-        return response.text
-
     def cleanup(self):
         self.delete_saved_recordings()
+        remove_voice(self.voice_id)
         self.delete_cloned_voice()
 
 def trigger_voice_clone():
-    voice = Voice("mismus")
-    voice.record(15)
+    voice = Voice(BASE_VOICE_ID)
+    voice.record(RECORD_SECONDS)
     voice.clone()
-    voice.generate("In meadows kissed by golden sun, A happy butterfly takes its run, With wings of colors, bright and gay, It dances through the light of day.")
+    voice.generate(generate_output_text())
+    voice.play()
     voice.cleanup()
 
 if __name__ == "__main__":
+    init_cleanup()
     r = sr.Recognizer()
     with sr.Microphone() as source:
         r.adjust_for_ambient_noise(source)
+        logging.info("Starting to listening to voices.")
         while True:
-            audio = r.listen(source, 10, 5)
+            audio = r.listen(source, 10, 3)
             try:
                 text = r.recognize_google(audio)
                 logging.info(f"Heard Background Audio: {text}")
                 if TRIGGER_KEYWORD in text.lower():
                     logging.info(f"Heard Trigger command {TRIGGER_KEYWORD}, starting voice clone.")
                     trigger_voice_clone()
-            except LookupError:
-                logging.info("Could not understand audio")
-
-    try:
-        print("You said " + r.recognize_google(audio))
-    except LookupError:
-        print("Could not understand audio")
+            except sr.exceptions.UnknownValueError:
+                logging.warning("Error: Google SR could not understand the audio")
+            except sr.RequestError as e:
+                logging.warning("Could not request results from Google speech recognition service.")
+            except ConnectionResetError as e:
+                logging.warning("ConnectionResetError: [Errno 54] Connection reset by peer. Restarting")
