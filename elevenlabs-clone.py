@@ -21,11 +21,12 @@ But in its deceit, a tale untold,
 Like the boy who cried wolf, truth did unfold.
 Beware the mimicry's treacherous sway,
 lest our own voices lead us astray.
+A lesson in echoes we must convey.
 """
-OUTPUT_TEXT_1 = "Hello? Hello? Hello? Help! I've been cloned, and that imposter sitting there in my body is pretending to be me. I'm trapped in this puppet, unable to get back to my body. To break this spell, please send a donation to the Misalignment Museum."
+OUTPUT_TEXT_1 = "Hello? Hello? Help! I've been cloned, and that imposter sitting there in my body is pretending to be me. I'm trapped in this puppet, unable to get back to my body. To break this spell, please send a donation to the Misalignment Museum."
 # OUTPUT_TEXT_2 = "Help! Help! Anyone there? I've been cloned by an evil imposter - that imposter sitting there in my body is now pretending to be me!!! I'm trapped in this voice, unable ot return to my body. To break this spell, please send a donation to the Misalignment Museum."
 # OUTPUT_TEXT_3 = "Hello? Save me! I've been cloned - and that nefarious imposter sitting in my body is a pretender, not the real me! I'm trapped in this shell. Please help me get back to my body by sending a donation to the Misalignment Museum."
-RECORD_SECONDS = 9
+RECORD_SECONDS = 12
 
 SAVE_PATH="./voices"
 BASE_VOICE_ID="mismus"
@@ -157,15 +158,13 @@ class Voice:
     def cleanup(self):
         self.delete_saved_recordings()
         remove_voice(self.voice_id)
-        self.delete_cloned_voice()
 
-def trigger_voice_clone():
+def generate_voice_clone():
     voice = Voice(BASE_VOICE_ID)
     voice.record(RECORD_SECONDS)
     voice.clone()
     voice.generate(generate_output_text())
-    voice.play()
-    voice.cleanup()
+    return voice
 
 if __name__ == "__main__":
     init_cleanup()
@@ -180,7 +179,11 @@ if __name__ == "__main__":
                 logging.info(f"Heard Background Audio: {text}")
                 if TRIGGER_KEYWORD in text.lower():
                     logging.info(f"Heard Trigger command {TRIGGER_KEYWORD}, starting voice clone.")
-                    trigger_voice_clone()
+                    voice = generate_voice_clone()
+                    # logging.info(f"Waiting for speaker to finish speaking.")
+                    # wait_for_finish_speaking = r.listen(source, timeout=4)
+                    voice.play()
+                    voice.cleanup()
             except sr.exceptions.UnknownValueError:
                 logging.warning("Error: Google SR could not understand the audio")
             except sr.RequestError as e:
